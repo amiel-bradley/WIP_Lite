@@ -4,78 +4,97 @@ namespace App\Http\Controllers;
 
 use App\Models\Campaign;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class CampaignController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function index(): Response
     {
-        return response()->json(
-            Campaign::with('employees')->latest()->get()
-        );
+        $user = Auth::user();
+
+        if ($user->isAdmin()) {
+            $campaigns = Campaign::with('assignments.employee', 'assignments.manager', 'assignments.position')->latest()->get();
+        } else {
+            $campaigns = Campaign::whereHas('assignments', function ($q) use ($user) {
+                $q->where('employee_id', $user->id);
+            })->with(['assignments' => function ($q) use ($user) {
+                $q->where('employee_id', $user->id)->with('employee', 'manager', 'position');
+            }])->get();
+        }
+
+        return Inertia::render('Campaigns/Index', [
+            'campaigns' => $campaigns,
+        ]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
+    public function create(): Response
+    {
+        return Inertia::render('Campaigns/Create');
+    }
+
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string',
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'start_date' => 'required|date',
-            'end_date' => 'nullable|date',
-            'status' => 'in:active,inactive,finished'
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'status' => 'required|in:active,inactive,finished',
         ]);
 
-        $campaign = Campaign::create($request->all());
+        $campaign = Campaign::create($validated);
 
-        return response()->json($campaign, 201);
+        return redirect()->route('campaigns.show', $campaign)
+            ->with('success', 'Campagne créée avec succès.');
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Campaign $campaign)
+    public function show(Campaign $campaign): Response
     {
-        return response()->json(
-            $campaign->load('employees')
-        );
+        $user = Auth::user();
+
+        if ($user->isAdmin()) {
+            $campaign->load('assignments.employee', 'assignments.manager', 'assignments.position');
+        } else {
+            $campaign->load(['assignments' => function ($q) use ($user) {
+                $q->where('employee_id', $user->id)->with('employee', 'manager', 'position');
+            }]);
+        }
+
+        return Inertia::render('Campaigns/Show', [
+            'campaign' => $campaign,
+        ]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
+    public function edit(Campaign $campaign): Response
+    {
+        return Inertia::render('Campaigns/Edit', [
+            'campaign' => $campaign,
+        ]);
+    }
+
     public function update(Request $request, Campaign $campaign)
     {
-        $request->validate([
-            'name' => 'sometimes|string',
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'start_date' => 'sometimes|date',
-            'end_date' => 'nullable|date',
-            'status' => 'in:active,inactive,finished'
+            'start_date' => 'required|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'status' => 'required|in:active,inactive,finished',
         ]);
 
-        $campaign->update($request->all());
+        $campaign->update($validated);
 
-        return response()->json($campaign);
+        return redirect()->route('campaigns.show', $campaign)
+            ->with('success', 'Campagne mise à jour.');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(Campaign $campaign)
     {
         $campaign->delete();
 
-        return response()->json([
-            'message' => 'Campagne supprimée avec succès'
-        ]);
+        return redirect()->route('campaigns.index')
+            ->with('success', 'Campagne supprimée.');
     }
-    // inutiles
-    public function create() {}
-    public function edit(Campaign $campaign) {}
 }
-

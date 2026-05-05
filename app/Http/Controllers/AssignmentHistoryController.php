@@ -3,17 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\AssignmentHistory;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class AssignmentHistoryController extends Controller
 {
-    /**
-     * Liste de tout l'historique
-     */
+    public function __construct()
+    {
+        $this->middleware('auth');
+    }
+
     public function index()
     {
-        return response()->json(
-            AssignmentHistory::with([
+        $histories = AssignmentHistory::with([
                 'assignment',
                 'employee',
                 'changer',
@@ -21,13 +22,13 @@ class AssignmentHistoryController extends Controller
                 'newManager',
                 'oldCampaign',
                 'newCampaign'
-            ])->latest()->get()
-        );
+            ])
+            ->latest()
+            ->paginate(20);
+
+        return response()->json($histories);
     }
 
-    /**
-     * Voir un historique précis
-     */
     public function show(AssignmentHistory $assignmentHistory)
     {
         return response()->json(
@@ -43,21 +44,16 @@ class AssignmentHistoryController extends Controller
         );
     }
 
-    /**
-     * Suppression (option admin uniquement)
-     */
     public function destroy(AssignmentHistory $assignmentHistory)
     {
+        if (!Auth::user()->isAdmin()) {
+            return response()->json(['error' => 'Accès refusé.'], 403);
+        }
+
         $assignmentHistory->delete();
 
         return response()->json([
             'message' => 'Historique supprimé avec succès'
         ]);
     }
-
-    // inutiles
-    public function create() {}
-    public function store(Request $request) {}
-    public function edit(AssignmentHistory $assignmentHistory) {}
-    public function update(Request $request, AssignmentHistory $assignmentHistory) {}
 }
